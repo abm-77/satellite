@@ -10,5 +10,5 @@ pub fn main() !void {
     var info = try elf.ElfInfo.init(allocator, "scratch/test");
     defer info.deinit();
 
-    try dwarf.init(allocator);
+    try dwarf.init(allocator, info);
 }

@@ -2,6 +2,7 @@ const std = @import("std");
 const print = std.debug.print;
 const fs = std.fs;
 const elf = std.elf;
+const dwarf = std.dwarf;
 
 const Buffer = []const u8;
 const ElfSectionHeaderList = []elf.Elf64_Shdr;
@@ -77,6 +78,7 @@ const ElfSectionTable = struct {
     table_indices: ElfTableIndices,
     symbol_table: []elf.Elf64_Sym,
     string_table: []u8,
+    section_name_string_table: []u8,
 };
 
 pub const ElfInfo = struct {
@@ -127,6 +129,7 @@ pub const ElfInfo = struct {
             .table_indices = table_indices,
             .symbol_table = symbol_table,
             .string_table = string_table,
+            .section_name_string_table = section_name_string_table,
         };
 
         return ElfInfo{
@@ -148,18 +151,49 @@ pub const ElfInfo = struct {
         return string_table[symbol.st_name];
     }
 
-    pub fn getSymbolFromName(self: *Self, name: []const u8) ?elf.Elf64_Sym {
+    pub fn getSymbolFromName(self: Self, name: []const u8) ?elf.Elf64_Sym {
         for (self.section_table.symbol_table) |symbol| {
             if (Validator.nameEql(name, self.symbolName(symbol))) return symbol;
         }
         return null;
     }
 
-    pub fn getSymbolFromAddr(self: *Self, addr: elf.Elf64_Addr) ?elf.Elf64_Sym {
+    pub fn getSymbolFromAddr(self: Self, addr: elf.Elf64_Addr) ?elf.Elf64_Sym {
         for (self.section_table.symbol_table) |symbol| {
             const start_addr = symbol.sh_value;
             const end_addr = symbol.sh_value + symbol.sh_size;
             if (addr >= start_addr and addr <= end_addr) return symbol;
+        }
+        return null;
+    }
+
+    pub fn findDwarfSection(self: Self, section_name: []const u8) ?dwarf.DwarfInfo.Section {
+        const section_name_string_table = self.section_table.section_name_string_table;
+
+        var found_section_header: ?elf.Elf64_Shdr = null;
+        for (self.section_table.headers) |section_header| {
+            if (section_header.sh_type != elf.SHT_PROGBITS) continue;
+            const curr_name = section_name_string_table[section_header.sh_name..];
+            const found = Validator.nameEql(section_name, curr_name);
+            if (found) {
+                found_section_header = section_header;
+                break;
+            }
+        }
+
+        if (found_section_header) |section_header| {
+            print("found {s}: {any}\n\n", .{ section_name, section_header });
+            const size = section_header.sh_size;
+            const offset = section_header.sh_offset;
+            const section_data = self.data[offset .. offset + size];
+
+            return dwarf.DwarfInfo.Section{
+                .data = section_data,
+                .owned = false,
+                .virtual_address = null,
+            };
+        } else {
+            print("did not find {s}\n\n", .{section_name});
         }
         return null;
     }
