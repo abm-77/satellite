@@ -109,13 +109,17 @@ pub const ElfInfo = struct {
         // Section Table
         var section_headers = sliceAtOffset(elf.Elf64_Shdr, bytes, elf_header.shoff, elf_header.shnum);
         const initial_section_header = section_headers[0];
+
         if (elf_header.phnum == 0xffff) program_headers.len = initial_section_header.sh_info;
-        if (elf_header.shnum == 0xffff) section_headers.len = initial_section_header.sh_size;
+
+        const n_section_headers = if (elf_header.shnum == 0) initial_section_header.sh_size else elf_header.shnum;
+        section_headers.len = n_section_headers;
+
         const section_name_string_table_index = if (elf_header.shstrndx == 0xffff) initial_section_header.sh_link else elf_header.shstrndx;
 
         const section_name_string_table_header = section_headers[section_name_string_table_index];
         const section_name_string_table = bytes[section_name_string_table_header.sh_offset..];
-        const table_indices = try ElfTableIndices.init(elf_header.shnum, section_headers, section_name_string_table, section_name_string_table_index);
+        const table_indices = try ElfTableIndices.init(n_section_headers, section_headers, section_name_string_table, section_name_string_table_index);
 
         const symbol_table_header = section_headers[table_indices.symbol_table_index];
         const n_symbols = @divExact(symbol_table_header.sh_size, symbol_table_header.sh_entsize);
